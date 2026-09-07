@@ -1,0 +1,3 @@
+import Link from 'next/link';
+import { ShieldCheck } from 'lucide-react';
+export default function AdminPage() { return <div className="p-4 pt-8"><div className="flex items-center gap-3"><span className="grid size-11 place-items-center rounded-xl bg-blue-100 text-primary"><ShieldCheck /></span><div><p className="text-sm font-medium text-primary">ADMIN</p><h1 className="text-3xl font-bold">Content management</h1></div></div><div className="mt-8 grid gap-3"><Link className="min-h-16 rounded-xl border bg-white p-4 font-semibold" href="/admin/moderation">Review moderation queue</Link><Link className="min-h-16 rounded-xl border bg-white p-4 font-semibold" href="/dashboard">Browse published notes</Link></div></div>; }

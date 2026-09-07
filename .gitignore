@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.next-dev/
+.env.local
+.agents/
+*.tsbuildinfo
+public/sw.js
+public/workbox-*.js

@@ -1,0 +1,1 @@
+export function EmptyState({ message = 'No notes found.' }: { message?: string }) { return <div className="rounded-xl border border-dashed bg-white p-8 text-center text-sm text-muted">{message}</div>; }

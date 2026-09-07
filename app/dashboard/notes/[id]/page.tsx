@@ -1,0 +1,7 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { Bot, ChevronLeft } from 'lucide-react';
+import { createServerClient } from '@/lib/supabase/server';
+import { NoteViewer } from '@/components/note-viewer';
+import { FeedbackForm } from '@/components/feedback-form';
+export default async function NotePage({ params }: { params: { id: string } }) { const id = Number(params.id); if (!Number.isInteger(id)) notFound(); const supabase = await createServerClient(); const { data, error } = await supabase.from('notes').select('*').eq('id', id).maybeSingle(); if (error || !data) notFound(); const { data: subject } = await supabase.from('subjects').select('semester_id').eq('id', data.subject_id).maybeSingle(); const aiHref = subject ? `/ai?course=${subject.semester_id}&lesson=${data.id}` : '/ai'; return <><header className="sticky top-0 z-20 flex min-h-14 items-center gap-3 border-b bg-white/95 px-4 backdrop-blur"><Link href="/dashboard" className="grid size-11 place-items-center rounded-lg" aria-label="Back to notes"><ChevronLeft /></Link><span className="min-w-0 flex-1 truncate font-semibold">{data.title}</span><FeedbackForm noteId={data.id} /></header><NoteViewer title={data.title} content={data.content} /><Link href={aiHref} className="fixed bottom-8 right-8 z-20 hidden min-h-12 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-600 md:inline-flex"><Bot size={19} aria-hidden="true" /> Ask AI</Link></>; }

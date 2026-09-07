@@ -1,0 +1,7 @@
+'use client';
+import { useFormState, useFormStatus } from 'react-dom';
+import { Flag } from 'lucide-react';
+import { submitFeedback } from '@/actions/feedback';
+const initial = { success: false, message: '' };
+function Submit() { const { pending } = useFormStatus(); return <button disabled={pending} className="min-h-11 rounded-lg bg-primary px-4 font-medium text-white disabled:opacity-60">{pending ? 'Sending…' : 'Send report'}</button>; }
+export function FeedbackForm({ noteId }: { noteId: number }) { const [state, action] = useFormState(submitFeedback, initial); return <details className="relative shrink-0"><summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary hover:bg-blue-50 [&::-webkit-details-marker]:hidden"><Flag size={18} aria-hidden="true" /><span>Report issue</span></summary><form action={action} className="absolute right-0 top-12 z-30 w-72 max-w-[calc(100vw-2rem)] space-y-3 rounded-xl border bg-white p-3 shadow-lg"><input type="hidden" name="noteId" value={noteId} /><label className="block text-sm font-medium" htmlFor="issue">What needs fixing?</label><textarea required id="issue" name="issue" className="min-h-24 w-full rounded-lg border p-2" placeholder="Describe the issue" /><Submit />{state.message && <p className={`text-sm ${state.success ? 'text-green-700' : 'text-red-600'}`}>{state.message}</p>}</form></details>; }

@@ -1,0 +1,5 @@
+import { createAdminClient } from '@/lib/supabase/admin';
+import { EmptyState } from '@/components/empty-state';
+export const dynamic = 'force-dynamic';
+type QueueItem = { id: number; notes: { title: string }[] | null };
+export default async function ModerationPage() { const { data, error } = await createAdminClient().from('moderation_queue').select('id, status, submitted_at, notes(title)').eq('status', 'pending').order('submitted_at'); const queue = (data ?? []) as unknown as QueueItem[]; return <div className="p-4 pt-8"><h1 className="text-3xl font-bold">Moderation</h1><p className="mt-2 text-muted">Notes awaiting approval.</p><div className="mt-6 grid gap-3">{error || !queue.length ? <EmptyState message={error ? 'Moderation queue is unavailable.' : 'No pending submissions.'} /> : queue.map((item) => <div key={item.id} className="rounded-xl border bg-white p-4"><p className="font-semibold">{item.notes?.[0]?.title ?? 'Untitled note'}</p><span className="mt-2 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">Pending</span></div>)}</div></div>; }
