@@ -7,7 +7,7 @@ type Lesson = { id: number; title: string; subject: string };
 type Course = { id: number; name: string; lessons: Lesson[] };
 type Message = { role: 'student' | 'assistant'; text: string };
 type AiStudyChatProps = { initialCourseId?: number; initialLessonId?: number };
-const outOfSyllabus = 'I could not find this information in the provided documents.';
+const outOfSyllabus = 'NOT FOUND';
 
 export function AiStudyChat({ initialCourseId, initialLessonId }: AiStudyChatProps) {
   const [courses, setCourses] = useState<Course[]>([]);

@@ -6,3 +6,5 @@ node_modules/
 *.tsbuildinfo
 public/sw.js
 public/workbox-*.js
+
+.vercel

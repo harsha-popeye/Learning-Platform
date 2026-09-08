@@ -1,4 +1,4 @@
-const OUT_OF_SYLLABUS = 'I could not find this information in the provided documents.';
+const OUT_OF_SYLLABUS = 'NOT FOUND\nThe answer is not available in the provided study material.';
 
 const STOP_WORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'for', 'from', 'how', 'i', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'this', 'that', 'to', 'was', 'what', 'when', 'where', 'which', 'who', 'why', 'with', 'you', 'your',
@@ -6,6 +6,7 @@ const STOP_WORDS = new Set([
 
 type QuestionAnswer = { question: string; answer: string };
 type Candidate = { text: string; score: number };
+export type StudyDocument = { id: number; title: string; content: string };
 
 function tokens(value: string) {
   return Array.from(new Set(value.toLowerCase().match(/[a-z0-9]+/g)?.filter((token) => token.length > 2 && !STOP_WORDS.has(token)) ?? []));
@@ -19,7 +20,8 @@ function score(questionTokens: string[], text: string) {
 
 function isQuestion(paragraph: string) {
   const normalized = paragraph.replace(/\*\*/g, '').replace(/^#{1,6}\s*/, '').trim();
-  return (/^\d+\s*[.)]\s+/.test(normalized) && normalized.length < 600) || (normalized.endsWith('?') && normalized.length < 600);
+  const isPrompt = /^(?:discuss|explain|describe|analyse|analyze|critically\s+(?:analyse|analyze|discuss|examine)|compare|contrast|comment|write|bring\s+out|elaborate|trace|evaluate|examine)\b/i.test(normalized);
+  return normalized.length < 600 && ((/^\d+\s*[.)]\s+/.test(normalized)) || normalized.endsWith('?') || isPrompt);
 }
 
 function isSectionHeading(paragraph: string) {
@@ -69,17 +71,42 @@ function authorFromTitle(documentName: string, questionTokens: string[]) {
 
 function bestQuestionAnswer(content: string, questionTokens: string[]) {
   const ranked = questionAnswers(content)
-    .map((pair) => ({ pair, score: score(questionTokens, pair.question) }))
-    .sort((first, second) => second.score - first.score);
+    .map((pair) => ({ pair, questionScore: score(questionTokens, pair.question), answerScore: score(questionTokens, pair.answer) }))
+    .sort((first, second) => (second.questionScore + second.answerScore) - (first.questionScore + first.answerScore));
   const best = ranked[0];
-  // A direct question match needs more than one incidental shared word.
-  return best && best.score > 0.5 ? best.pair.answer : undefined;
+  // Prefer the answer that belongs to a matching document question. When the
+  // wording only partly overlaps, require matching evidence in its answer too.
+  const isSupported = best && (best.questionScore > 0.5 || (best.questionScore >= 0.5 && best.answerScore >= 0.25));
+  return isSupported ? best.pair.answer : undefined;
+}
+
+function focusedAnswer(answer: string, questionTokens: string[]) {
+  const sentences = answer
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  if (sentences.length <= 3) return answer;
+
+  const relevant = sentences
+    .map((text, index) => ({ text, index, score: score(questionTokens, text) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((first, second) => second.score - first.score || first.index - second.index)
+    .slice(0, 3)
+    .sort((first, second) => first.index - second.index)
+    .map((candidate) => candidate.text);
+
+  // A matching document answer may use different wording. In that case, use
+  // its opening explanation rather than returning unrelated text elsewhere.
+  return (relevant.length ? relevant : sentences.slice(0, 3)).join(' ');
 }
 
 function sourceSentences(content: string) {
-  return content
-    .replace(/^#{1,6}\s.*$/gm, '')
-    .replace(/^(?:[IVXLC]+)\.\s.*$/gm, '')
+  const answerOnly = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !/^#{1,6}\s/.test(line) && !isSectionHeading(line) && !isQuestion(line))
+    .join(' ');
+  return answerOnly
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 20 && !isQuestion(sentence));
@@ -123,7 +150,9 @@ function comparisonAnswer(content: string, question: string, questionTokens: str
   if (!parts.length) return undefined;
   const contrast = sentences.find((sentence) => entities.every((entity) => sentence.toLowerCase().includes(entity.toLowerCase())) && /\b(contrast|whereas|while)\b/i.test(sentence));
   if (contrast) parts.push(`Main contrast: ${contrast}`);
-  if (missing.length) parts.push(`Information about ${missing.join(' and ')} is not available in the provided document.`);
+  // A partial comparison is completed by the cross-chapter retriever instead
+  // of incorrectly claiming the other subject is absent from all material.
+  if (missing.length) return undefined;
   return parts.join('\n\n');
 }
 
@@ -140,14 +169,51 @@ export function answerFromLesson(noteId: number, documentName: string, content: 
   const questionTokens = tokens(question);
   if (!questionTokens.length) return OUT_OF_SYLLABUS;
 
-  const answer = comparisonAnswer(content, question, questionTokens)
-    ?? authorFromTitle(documentName, questionTokens)
-    ?? bestQuestionAnswer(content, questionTokens)
+  const comparison = comparisonAnswer(content, question, questionTokens);
+  const author = authorFromTitle(documentName, questionTokens);
+  const matchedDocumentAnswer = bestQuestionAnswer(content, questionTokens);
+  const answer = comparison
+    ?? author
+    ?? (matchedDocumentAnswer ? focusedAnswer(matchedDocumentAnswer, questionTokens) : undefined)
     ?? bestRelevantSentence(content, questionTokens);
   if (!answer) return OUT_OF_SYLLABUS;
 
   const shortened = answer.length > 1800 ? `${answer.slice(0, 1800).trimEnd()}…` : answer;
   return shortened;
+}
+
+function documentScore(document: StudyDocument, questionTokens: string[], preferredNoteId?: number) {
+  const titleScore = score(questionTokens, document.title);
+  const contentScore = score(questionTokens, document.content);
+  const preferredBonus = document.id === preferredNoteId ? 0.1 : 0;
+  return (titleScore * 2) + contentScore + preferredBonus;
+}
+
+/**
+ * Searches every available study document before reporting a missing answer.
+ * A selected chapter is only a tie-breaker; it never limits the search scope.
+ */
+export function answerFromDocuments(documents: StudyDocument[], question: string, preferredNoteId?: number) {
+  const questionTokens = tokens(question);
+  if (!questionTokens.length) return OUT_OF_SYLLABUS;
+
+  const rankedDocuments = documents
+    .map((document) => ({ document, score: documentScore(document, questionTokens, preferredNoteId) }))
+    .filter((candidate) => candidate.score >= 0.5)
+    .sort((first, second) => second.score - first.score);
+  const answers = rankedDocuments
+    .map(({ document }) => ({ document, answer: answerFromLesson(document.id, document.title, document.content, question) }))
+    .filter((candidate) => candidate.answer !== OUT_OF_SYLLABUS);
+  if (!answers.length) return OUT_OF_SYLLABUS;
+
+  const isComparison = /\b(compare|comparison|contrast|difference|different|similar|similarity)\b/i.test(question);
+  if (!isComparison) return answers[0].answer;
+
+  // Comparison questions may need evidence from different chapters. Keep the
+  // result compact and label chapters only when more than one contributes.
+  const uniqueAnswers = answers.filter((candidate, index, all) => all.findIndex((item) => item.answer === candidate.answer) === index).slice(0, 3);
+  if (uniqueAnswers.length === 1) return uniqueAnswers[0].answer;
+  return uniqueAnswers.map(({ document, answer }) => `${document.title}:\n${answer}`).join('\n\n');
 }
 
 export { OUT_OF_SYLLABUS };
